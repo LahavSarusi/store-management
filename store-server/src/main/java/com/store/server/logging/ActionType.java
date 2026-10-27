@@ -1,0 +1,11 @@
+package com.store.server.logging;
+
+/** Auditable actions written to {@code logs/actions.log}. */
+public enum ActionType {
+    LOGIN, LOGIN_REJECTED, LOGOUT,
+    EMPLOYEE_CREATED, EMPLOYEE_UPDATED, EMPLOYEE_DELETED, PASSWORD_CHANGED, POLICY_UPDATED,
+    CUSTOMER_CREATED, CUSTOMER_UPDATED, CUSTOMER_UPGRADED,
+    SALE, RESTOCK,
+    REPORT_EXPORTED,
+    CHAT_QUEUED, CHAT_STARTED, CHAT_JOINED, CHAT_ENDED
+}

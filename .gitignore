@@ -1,0 +1,13 @@
+# Build output
+target/
+dependency-reduced-pom.xml
+
+# Created when the server runs
+data/
+logs/
+reports/
+
+# Editor settings
+.idea/
+*.iml
+.vscode/
