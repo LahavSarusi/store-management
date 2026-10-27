@@ -7,10 +7,48 @@ polymorphic customer pricing, sales reports (.txt export), inter-branch chat wit
 
 Requires JDK 17+ and Maven.
 
+The server's entry point is [`ServerMain`](src/main/java/com/store/server/ServerMain.java). It depends on the
+rest of the project and on Gson, so always run it through the project (from an editor or as the built jar) —
+not as a single file.
+
+### Option A – from an editor
+
+1. Open the `store-server` folder (the one containing `pom.xml`) in VS Code (with the *Extension Pack for Java*)
+   or IntelliJ IDEA, and wait until it finishes loading the project and downloading its libraries.
+2. Open `src/main/java/com/store/server/ServerMain.java` and click **Run** on the `main` method.
+
+### Option B – from the command line
+
+The `target/` folder (with the jar) is not stored in git, so after cloning you must build once before running.
+Run these commands **inside `store-server/`**, the folder that contains `pom.xml`:
+
 ```
 mvn package                                   # compiles, runs all unit tests, builds target/store-server.jar
-java -jar target/store-server.jar [port=5050] [baseDir=.] [maxClients=100]
+java -jar target/store-server.jar             # starts the server
 ```
+
+Wait for `BUILD SUCCESS` before starting the jar. Run `mvn package` again after changing the code — the jar does
+not update by itself.
+
+### Checking that it runs
+
+When the server is ready it prints:
+
+```
+INFO: Store server listening on port 5050
+```
+
+Keep that window open while you use the server; stop it with `Ctrl+C` (or the editor's stop button).
+
+The jar accepts three optional arguments, in this order:
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `port` | `5050` | TCP port clients connect to |
+| `baseDir` | `.` | folder where `data/`, `logs/` and `reports/` are created |
+| `maxClients` | `100` | connections accepted at the same time; extra clients get `SERVER_BUSY` |
+
+Example: `java -jar target/store-server.jar 6000 . 50`
 
 On first start the server creates demo data under `baseDir`:
 
