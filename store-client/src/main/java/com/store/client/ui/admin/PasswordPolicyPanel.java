@@ -17,7 +17,7 @@ import java.awt.BorderLayout;
 public final class PasswordPolicyPanel extends JPanel {
 
     private final ServerApi api;
-    private final JSpinner minLength = new JSpinner(new SpinnerNumberModel(8, 1, 64, 1));
+    private final JSpinner minLength = new JSpinner(new SpinnerNumberModel(8, 4, 64, 1));
     private final JCheckBox requireDigit = new JCheckBox("At least one digit");
     private final JCheckBox requireUppercase = new JCheckBox("At least one uppercase letter");
     private final JCheckBox requireSpecial = new JCheckBox("At least one special character");
