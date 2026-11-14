@@ -71,33 +71,45 @@ public class EmployeeService {
     /** Null fields are left unchanged. Changing role or branch logs the user out so permissions refresh. */
     public synchronized EmployeeView update(String actor, EmployeeRequest req) {
         Employee e = require(normalize(req.username()));
-        boolean accessChanged = false;
 
-        if (req.fullName() != null) {
-            e.setFullName(Validation.requireText(req.fullName(), "fullName"));
-        }
+        // Validate everything first: the DAO hands out the live object, so nothing may be changed
+        // until the whole request is known to be valid.
+        String fullName = req.fullName() == null ? null : Validation.requireText(req.fullName(), "fullName");
         if (req.phone() != null) {
             validatePhone(req.phone());
-            e.setPhone(req.phone());
         }
-        if (req.nationalId() != null) {
-            e.setNationalId(validateNationalId(req.nationalId(), e.getUsername()));
-        }
-        if (req.bankAccount() != null) {
-            e.setBankAccount(validateBankAccount(req.bankAccount()));
-        }
+        String nationalId = req.nationalId() == null ? null : validateNationalId(req.nationalId(), e.getUsername());
+        String bankAccount = req.bankAccount() == null ? null : validateBankAccount(req.bankAccount());
+        Role role = e.getRole();
+        String branchId = e.getBranchId();
+        boolean accessChanged = false;
         if (req.role() != null || req.branchId() != null) {
-            Role role = req.role() != null ? req.role() : e.getRole();
-            String branchId = resolveBranch(role, req.branchId() != null ? req.branchId() : e.getBranchId());
+            role = req.role() != null ? req.role() : e.getRole();
+            branchId = resolveBranch(role, req.branchId() != null ? req.branchId() : e.getBranchId());
             accessChanged = role != e.getRole() || !Objects.equals(branchId, e.getBranchId());
             if (accessChanged && e.getUsername().equals(actor) && role != Role.ADMIN) {
                 throw new DomainException(ErrorCode.CONFLICT, "You cannot remove your own admin role");
             }
-            e.setRole(role);
-            e.setBranchId(branchId);
         }
         if (req.password() != null) {
             policy.validate(req.password());
+        }
+
+        if (fullName != null) {
+            e.setFullName(fullName);
+        }
+        if (req.phone() != null) {
+            e.setPhone(req.phone());
+        }
+        if (nationalId != null) {
+            e.setNationalId(nationalId);
+        }
+        if (bankAccount != null) {
+            e.setBankAccount(bankAccount);
+        }
+        e.setRole(role);
+        e.setBranchId(branchId);
+        if (req.password() != null) {
             e.setPasswordHash(PasswordHasher.hash(req.password()));
             e.setPasswordChangedAt(System.currentTimeMillis());
         }

@@ -63,11 +63,16 @@ public class CustomerService {
     /** Null fields are left unchanged; a new type re-creates the customer as that subclass. */
     public synchronized Customer update(String actor, CustomerRequest req) {
         Customer c = get(Validation.requireText(req.id(), "id"));
-        if (req.fullName() != null) {
-            c.setFullName(Validation.requireText(req.fullName(), "fullName"));
-        }
+        // Validate everything first: the DAO hands out the live object, so nothing may be changed
+        // until the whole request is known to be valid.
+        String fullName = req.fullName() == null ? null : Validation.requireText(req.fullName(), "fullName");
         if (req.phone() != null) {
             Validation.require(Validation.isValidPhone(req.phone()), "Invalid phone number");
+        }
+        if (fullName != null) {
+            c.setFullName(fullName);
+        }
+        if (req.phone() != null) {
             c.setPhone(req.phone());
         }
         if (req.type() != null) {
