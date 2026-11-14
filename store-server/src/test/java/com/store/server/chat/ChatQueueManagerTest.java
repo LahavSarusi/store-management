@@ -198,8 +198,8 @@ class ChatQueueManagerTest {
     void acceptFailsGracefullyWhenRequesterLeftAndRequestStaysQueued() {
         chat.onLogin(tlvCashier);
         ChatRequestResult r = chat.requestChat(tlvCashier, "HFA");
-        chat.onDisconnect(tlvCashier);
-        chat.onLogin(hfaSales);
+        chat.onLogin(hfaSales);          // gets the offer
+        chat.onDisconnect(tlvCashier);   // requester leaves before it is accepted
 
         DomainException e = assertThrows(DomainException.class, () -> chat.accept(hfaSales, r.requestId()));
         assertEquals(ErrorCode.CONFLICT, e.code());
@@ -219,5 +219,51 @@ class ChatQueueManagerTest {
                 .map(e -> (String) ((Map<?, ?>) e.payload()).get("requestId"))
                 .reduce((a, b) -> b)   // latest offer
                 .orElse(null);
+    }
+
+    @Test
+    void requestOfAnAbsentRequesterDoesNotBlockTheQueueAndIsOfferedWhenTheyReturn() {
+        chat.onLogin(tlvCashier);
+        chat.onLogin(tlvManager);
+        ChatRequestResult first = chat.requestChat(tlvCashier, "HFA");
+        ChatRequestResult second = chat.requestChat(tlvManager, "HFA");
+        chat.onDisconnect(tlvCashier);   // the head of the queue can't be served now
+
+        chat.onLogin(hfaSales);
+        assertEquals(second.requestId(), offeredRequestId("hfa.sales"), "the next servable request is offered");
+
+        chat.onLogin(hfaCashier);
+        assertNull(offeredRequestId("hfa.cashier"), "nothing servable is left");
+        assertEquals(2, pending.store.size(), "the skipped request is still saved");
+
+        chat.onLogin(tlvCashier);        // requester is back -> a free employee gets the request
+        assertEquals(first.requestId(), offeredRequestId("hfa.cashier"));
+    }
+
+    @Test
+    void afterAFailedAcceptTheEmployeeIsOfferedTheNextRequest() {
+        chat.onLogin(tlvCashier);
+        chat.onLogin(tlvManager);
+        ChatRequestResult first = chat.requestChat(tlvCashier, "HFA");
+        ChatRequestResult second = chat.requestChat(tlvManager, "HFA");
+        chat.onLogin(hfaSales);          // offered the first request
+        chat.onDisconnect(tlvCashier);
+
+        assertThrows(DomainException.class, () -> chat.accept(hfaSales, first.requestId()));
+
+        assertEquals(second.requestId(), offeredRequestId("hfa.sales"));
+    }
+
+    @Test
+    void requestingAgainWhileTheRequestIsOfferedDoesNotQueueItTwice() {
+        chat.onLogin(tlvCashier);
+        ChatRequestResult a = chat.requestChat(tlvCashier, "HFA");
+        chat.onLogin(hfaSales);          // the request is now offered, no longer in the queue
+
+        ChatRequestResult b = chat.requestChat(tlvCashier, "HFA");
+
+        assertEquals(ChatRequestResult.Status.QUEUED, b.status());
+        assertEquals(a.requestId(), b.requestId());
+        assertEquals(1, pending.store.size());
     }
 }
