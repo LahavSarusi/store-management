@@ -57,10 +57,11 @@ public class InventoryService {
             result = operation.apply(stock);
             snapshot = new ArrayList<>(stock.values());
             inventoryDao.saveBranch(branchId, snapshot);
+            // Published under the lock so that clients receive snapshots in the order they were saved.
+            bus.toBranch(branchId, ServerEvent.of(EventType.INVENTORY_UPDATED, new InventoryView(branchId, snapshot)));
         } finally {
             lock.unlock();
         }
-        bus.toBranch(branchId, ServerEvent.of(EventType.INVENTORY_UPDATED, new InventoryView(branchId, snapshot)));
         return result;
     }
 

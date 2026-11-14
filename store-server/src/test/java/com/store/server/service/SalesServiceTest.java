@@ -165,4 +165,51 @@ class SalesServiceTest {
                 () -> inventory.restock(manager, new RestockRequest("NEW-1", 3, null, null, null)));
         assertTrue(logger.has(ActionType.RESTOCK));
     }
+
+    @Test
+    void stockIsRestoredWhenTheSaleCannotBeRecorded() {
+        com.store.server.dao.SaleDao failing = new com.store.server.dao.SaleDao() {
+            @Override
+            public void save(com.store.server.model.Sale sale) {
+                throw new java.io.UncheckedIOException("disk full", new java.io.IOException("disk full"));
+            }
+
+            @Override
+            public List<com.store.server.model.Sale> findAll() {
+                return List.of();
+            }
+        };
+        SalesService broken = new SalesService(inventory, customers, failing, logger);
+
+        assertThrows(java.io.UncheckedIOException.class, () -> broken.sell(cashier, sale("314159260", "SH-001", 3)));
+
+        assertEquals(10, stockOf("SH-001"), "stock must be given back");
+        assertEquals(0, customers.get("314159260").getPurchaseCount());
+        assertFalse(logger.has(ActionType.SALE));
+    }
+
+    @Test
+    void concurrentSalesToANewCustomerPriceOnlyTheFirstAsNew() throws Exception {
+        int threads = 4;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        List<java.util.concurrent.Future<SaleResult>> results = new java.util.ArrayList<>();
+        for (int i = 0; i < threads; i++) {
+            results.add(pool.submit(() -> {
+                start.await();
+                return sales.sell(cashier, sale("314159260", "SH-001", 1));
+            }));
+        }
+        start.countDown();
+        int pricedAsNew = 0;
+        for (java.util.concurrent.Future<SaleResult> f : results) {
+            if (f.get(10, TimeUnit.SECONDS).sale().customerType() == CustomerType.NEW) {
+                pricedAsNew++;
+            }
+        }
+        pool.shutdown();
+
+        assertEquals(1, pricedAsNew, "the first-purchase track may be used once");
+        assertEquals(threads, customers.get("314159260").getPurchaseCount());
+    }
 }
