@@ -74,4 +74,15 @@ class FileActionLoggerTest {
         assertTrue(logger.readTranscript("..\\secret").isEmpty());
         assertTrue(logger.readTranscript(null).isEmpty());
     }
+
+    @Test
+    void actorCannotForgeLogLines() {
+        logger.log(ActionType.LOGIN_REJECTED, "x\n2026-01-01 00:00:00 | SALE | admin | forged", "bad credentials");
+
+        List<LogEntry> all = logger.query(null, null, null, 10);
+        assertEquals(1, all.size(), "a line break in the actor must not start a new log line");
+        assertEquals(ActionType.LOGIN_REJECTED, all.get(0).action());
+        assertEquals("bad credentials", all.get(0).details());
+        assertTrue(logger.query(ActionType.SALE, null, null, 10).isEmpty());
+    }
 }
