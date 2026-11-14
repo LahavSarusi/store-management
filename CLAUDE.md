@@ -8,7 +8,7 @@ Course final project ("פרוייקט סיכום"): a management system for a ch
 
 | Folder | What | Status | Details |
 |---|---|---|---|
-| `store-server/` | TCP server: all business rules, data, permissions, chat queue, logs | Done, 68 tests | `store-server/CLAUDE.md`, `store-server/README.md` |
+| `store-server/` | TCP server: all business rules, data, permissions, chat queue, logs | Done, 77 tests | `store-server/CLAUDE.md`, `store-server/README.md` |
 | `store-client/` | Swing desktop GUI used by employees and the admin | Done, 36 tests | `store-client/CLAUDE.md`, `store-client/README.md` |
 
 The protocol is defined by the server: `store-server/src/main/java/com/store/server/protocol/` (`RequestType`, `EventType`, `ErrorCode`, `dto/Dtos.java`). Any protocol change must be applied to both projects.
@@ -35,4 +35,4 @@ The spec also requires clean, well-documented code and unit tests in both projec
 - **macOS (current machine):** Homebrew `openjdk@17` and `maven`. `openjdk@17` is keg-only, so set `export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home` before `mvn` (otherwise Maven uses Homebrew's newer `openjdk`). The plain `/usr/bin/java` stub finds no JDK; use `$JAVA_HOME/bin/java -jar ...`.
 - **Windows (original machine):** JDK 25 (Eclipse Adoptium) at `C:\Program Files\Eclipse Adoptium\jdk-25.0.5.8-hotspot`; Maven not installed there — use IntelliJ's bundled Maven. Passing the Hebrew repo path as an argument to `java.exe` from Git Bash gets mangled ("Unable to access jarfile") — `cd` into the folder and use relative paths.
 - Projects target Java 17. The repo path contains Hebrew characters on both machines.
-- `.gitignore` (root) excludes `target/`, `dependency-reduced-pom.xml`, the server's runtime `data/`, `logs/`, `reports/`, and IDE folders — for both projects.
+- `.gitignore` (root) excludes `target/`, `dependency-reduced-pom.xml`, the server's runtime `store-server/data/`, `logs/`, `reports/` (anchored to `store-server/` — a bare `reports/` once hid the client's `ui/reports` package from git), and IDE folders.
