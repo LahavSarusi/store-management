@@ -58,8 +58,10 @@ public class FileActionLogger implements ActionLogger, AutoCloseable {
 
     @Override
     public void log(ActionType action, String actor, String details) {
-        String line = String.join(" | ", now(), action.name(), actor == null ? "-" : actor,
-                details == null ? "" : details.replace('\n', ' '));
+        // The actor can be raw user input (a rejected login name): keep it on one line and out of the separators.
+        String line = String.join(" | ", now(), action.name(),
+                actor == null || actor.isBlank() ? "-" : oneLine(actor).replace('|', '/'),
+                details == null ? "" : oneLine(details));
         writer.execute(() -> append(actionsFile, line + System.lineSeparator()));
     }
 
@@ -185,6 +187,11 @@ public class FileActionLogger implements ActionLogger, AutoCloseable {
         } catch (IOException e) {
             LOG.log(Level.WARNING, "Failed writing " + file, e);
         }
+    }
+
+    /** Line breaks would let a value forge extra log lines. */
+    private static String oneLine(String value) {
+        return value.replaceAll("[\\r\\n\\u0085\\u2028\\u2029]+", " ").trim();
     }
 
     private static String now() {

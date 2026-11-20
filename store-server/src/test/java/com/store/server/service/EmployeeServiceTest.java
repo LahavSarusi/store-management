@@ -149,4 +149,20 @@ class EmployeeServiceTest {
         service.changePassword(e, "Strong123", "Better456");
         assertNotNull(auth.authenticate("user1", "Better456"));
     }
+
+    @Test
+    void failedUpdateChangesNothing() {
+        service.create("admin", req("user1", "Strong123", Role.CASHIER, "TLV"));
+
+        // Valid name and role, but the password breaks the policy: the whole update must be rejected.
+        EmployeeRequest bad = new EmployeeRequest("user1", "weak", null, "Other Name", null, null, null,
+                Role.SHIFT_MANAGER);
+        DomainException e = assertThrows(DomainException.class, () -> service.update("admin", bad));
+        assertEquals(ErrorCode.POLICY_VIOLATION, e.code());
+
+        Employee stored = employeeDao.findByUsername("user1").orElseThrow();
+        assertEquals("Full Name", stored.getFullName());
+        assertEquals(Role.CASHIER, stored.getRole());
+        assertDoesNotThrow(() -> auth.authenticate("user1", "Strong123"));
+    }
 }

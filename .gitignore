@@ -3,9 +3,10 @@ target/
 dependency-reduced-pom.xml
 
 # Created when the server runs
-data/
-logs/
-reports/
+# Anchored to the server folder: a bare "reports/" also matched the client's ui/reports source package.
+/store-server/data/
+/store-server/logs/
+/store-server/reports/
 
 # Editor settings
 .idea/

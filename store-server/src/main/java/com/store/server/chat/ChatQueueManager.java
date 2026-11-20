@@ -90,6 +90,12 @@ public final class ChatQueueManager implements AvailabilityListener {
             return ChatRequestResult.connected(startSession(requester, target.get()).id());
         }
 
+        // Already waiting, and currently offered to an employee of that branch - don't queue twice.
+        for (ChatRequest r : offered.values()) {
+            if (r.requesterUsername().equals(user) && r.targetBranchId().equals(targetBranchId)) {
+                return ChatRequestResult.queued(r.id(), 1);
+            }
+        }
         Deque<ChatRequest> queue = queueFor(targetBranchId);
         int position = 1;
         for (ChatRequest r : queue) {
@@ -118,8 +124,9 @@ public final class ChatQueueManager implements AvailabilityListener {
         }
         Employee requester = online.get(request.requesterUsername());
         if (requester == null || status.get(requester.getUsername()) != AvailabilityStatus.AVAILABLE) {
-            // Keep the request; it is offered again when someone in this branch next becomes available.
+            // Keep the request at its place; it is offered again once the requester is free (see onAvailable).
             queueFor(request.targetBranchId()).addFirst(request);
+            offerNext(acceptor);   // meanwhile the acceptor can take the next request that can be served
             throw new DomainException(ErrorCode.CONFLICT, "The requester is not available right now");
         }
         pendingDao.delete(request.id());
@@ -232,24 +239,59 @@ public final class ChatQueueManager implements AvailabilityListener {
 
     // ------------------------------------------------------------------ Observer callback
 
-    /** Offers the oldest request waiting for this employee's branch, one offer at a time. */
+    /**
+     * Called whenever {@code username} becomes free. Two things can now move forward:
+     * the oldest servable request waiting for this employee's branch is offered to them, and requests this
+     * user made earlier (skipped while they were offline or busy) are offered to free employees of the target branch.
+     */
     @Override
     public synchronized void onAvailable(String username) {
         Employee e = online.get(username);
-        if (e == null || offeredTo.containsValue(username)) {
+        if (e == null) {
             return;
         }
-        ChatRequest next = queueFor(e.getBranchId()).pollFirst();
-        if (next == null) {
+        offerNext(e);
+        List<String> targets = new ArrayList<>();
+        queueByBranch.forEach((branchId, queue) -> {
+            if (queue.stream().anyMatch(r -> r.requesterUsername().equals(username))) {
+                targets.add(branchId);
+            }
+        });
+        for (String branchId : targets) {
+            List<Employee> free = online.values().stream()
+                    .filter(x -> branchId.equals(x.getBranchId()))
+                    .toList();
+            free.forEach(this::offerNext);
+        }
+    }
+
+    /**
+     * Offers {@code e} the oldest request of their branch that can be served right now, one offer at a time.
+     * Requests whose requester is offline or in a chat keep their place and are skipped, so they never block
+     * the requests behind them.
+     */
+    private void offerNext(Employee e) {
+        String username = e.getUsername();
+        if (status.get(username) != AvailabilityStatus.AVAILABLE || offeredTo.containsValue(username)) {
             return;
         }
-        offered.put(next.id(), next);
-        offeredTo.put(next.id(), username);
-        bus.toUser(username, ServerEvent.of(EventType.CHAT_PENDING_REQUEST, Map.of(
-                "requestId", next.id(),
-                "from", next.requesterUsername(),
-                "fromBranch", next.requesterBranchId(),
-                "requestedAt", next.createdAt())));
+        Iterator<ChatRequest> it = queueFor(e.getBranchId()).iterator();
+        while (it.hasNext()) {
+            ChatRequest next = it.next();
+            if (status.get(next.requesterUsername()) != AvailabilityStatus.AVAILABLE
+                    || !online.containsKey(next.requesterUsername())) {
+                continue;
+            }
+            it.remove();
+            offered.put(next.id(), next);
+            offeredTo.put(next.id(), username);
+            bus.toUser(username, ServerEvent.of(EventType.CHAT_PENDING_REQUEST, Map.of(
+                    "requestId", next.id(),
+                    "from", next.requesterUsername(),
+                    "fromBranch", next.requesterBranchId(),
+                    "requestedAt", next.createdAt())));
+            return;
+        }
     }
 
     // ------------------------------------------------------------------ internals

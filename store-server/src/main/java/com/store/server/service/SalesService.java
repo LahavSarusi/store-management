@@ -22,6 +22,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Selling to customers. The price is computed by the customer's own class ({@link Customer#purchase}),
@@ -33,6 +35,8 @@ public class SalesService {
     private final CustomerService customers;
     private final SaleDao saleDao;
     private final ActionLogger logger;
+    /** One lock per customer id: see {@link #sell}. */
+    private final Map<String, ReentrantLock> customerLocks = new ConcurrentHashMap<>();
 
     public SalesService(InventoryService inventory, CustomerService customers, SaleDao saleDao, ActionLogger logger) {
         this.inventory = inventory;
@@ -51,25 +55,57 @@ public class SalesService {
         return new SaleQuote(customer.getId(), customer.getType(), lines, customer.purchase(lines));
     }
 
-    /** Atomically checks stock, prices the sale, decrements stock and records it; then updates the customer. */
+    /**
+     * Checks stock, prices the sale and decrements stock under the branch lock, then records the sale and
+     * updates the customer. If the sale cannot be recorded, the stock is put back.
+     * <p>
+     * Sales to the same customer run one at a time (in any branch), so the price is always computed from the
+     * customer's current statistics - e.g. the first-purchase discount cannot be given twice.
+     */
     public SaleResult sell(Employee employee, SaleRequest req) {
         Map<String, Integer> wanted = mergeLines(req);
-        Customer customer = customers.get(req.customerId());
+        ReentrantLock customerLock = customerLocks.computeIfAbsent(req.customerId().trim(), k -> new ReentrantLock());
+        customerLock.lock();
+        try {
+            return sellLocked(employee, req.customerId(), wanted);
+        } finally {
+            customerLock.unlock();
+        }
+    }
+
+    private SaleResult sellLocked(Employee employee, String customerId, Map<String, Integer> wanted) {
+        Customer customer = customers.get(customerId);
+        String branchId = employee.getBranchId();
 
         record Committed(Sale sale, PurchaseResult result) { }
-        Committed committed = inventory.modify(employee.getBranchId(), stock -> {
+        Committed committed = inventory.modify(branchId, stock -> {
             List<SaleLine> lines = buildLines(stock, wanted);
             PurchaseResult result = customer.purchase(lines);
             lines.forEach(l -> {
                 InventoryItem item = stock.get(l.sku());
                 item.setQuantity(item.getQuantity() - l.quantity());
             });
-            Sale sale = new Sale(IdGenerator.next("SALE"), employee.getBranchId(), employee.getUsername(),
+            Sale sale = new Sale(IdGenerator.next("SALE"), branchId, employee.getUsername(),
                     customer.getId(), customer.getType(), lines,
                     result.subtotal(), result.discount(), result.total(), System.currentTimeMillis());
-            saleDao.save(sale);
             return new Committed(sale, result);
         });
+
+        // The stock is saved by now. Record the sale; if that fails, give the stock back so the two never disagree.
+        try {
+            saleDao.save(committed.sale());
+        } catch (RuntimeException e) {
+            inventory.modify(branchId, stock -> {
+                committed.sale().lines().forEach(l -> {
+                    InventoryItem item = stock.get(l.sku());
+                    if (item != null) {
+                        item.setQuantity(item.getQuantity() + l.quantity());
+                    }
+                });
+                return null;
+            });
+            throw e;
+        }
 
         Customer after = customers.recordPurchase(employee.getUsername(), customer.getId(), committed.result());
         Sale sale = committed.sale();
